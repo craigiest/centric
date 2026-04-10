@@ -426,7 +426,10 @@ function drawPaths(mode, t, sc) {
     // Adaptive sample count: aim for ~60 pts per retrograde loop.
     // Synodic period = 1/|1/T_planet − 1/T_earth|
     const synodic   = 1 / Math.abs(1 / p.period - 1 / 365.25);
-    const halfPer   = p.period / 2;
+    // For inner planets (Mercury, Venus) the heliocentric half-period is shorter
+    // than their synodic period, so their geocentric loop wouldn't close.
+    // Use whichever is larger to guarantee at least one complete loop each way.
+    const halfPer   = Math.max(p.period / 2, synodic);
     const nLoops    = Math.max(0.5, halfPer / synodic);
     const N         = Math.min(4000, Math.max(360, Math.ceil(nLoops * 60)));
     const dtStep    = p.period / N; // time step between samples
