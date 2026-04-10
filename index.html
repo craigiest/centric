@@ -154,7 +154,7 @@ canvas {
   <div class="grp">
     <span class="lbl">Time</span>
     <button class="btn" id="btn-rev" title="Reverse direction">&#8644;</button>
-    <input type="range" id="speed-slider" min="0" max="100" value="72">
+    <input type="range" id="speed-slider" min="0" max="100" value="73">
     <button class="btn" id="btn-pause" title="Pause">&#9646;&#9646;</button>
     <div class="val" id="speed-val">—</div>
   </div>
@@ -225,31 +225,6 @@ function resize() {
   H  = canvas.height = Math.round(canvas.clientHeight);
   cx = W / 2;
   cy = H / 2;
-  initStars();
-}
-
-// ── Starfield ────────────────────────────────────────────────────────────────
-let stars = [];
-
-function initStars() {
-  stars = [];
-  for (let i = 0; i < 300; i++) {
-    stars.push({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      r: Math.random() < 0.12 ? 1.5 : 1,
-      a: 0.25 + Math.random() * 0.65,
-    });
-  }
-}
-
-function drawStars() {
-  for (const s of stars) {
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r, 0, TAU);
-    ctx.fillStyle = `rgba(255,255,255,${s.a.toFixed(2)})`;
-    ctx.fill();
-  }
 }
 
 // ── Math helpers ─────────────────────────────────────────────────────────────
@@ -304,7 +279,8 @@ function getPositions(t, mode) {
 // zoom 1 → max scale (Earth's orbit fills view)
 function scaleRange() {
   const R = Math.min(W, H) / 2;
-  return { lo: R / 30.069, hi: R / 1.0 };
+  // 1.15 margin keeps Neptune's orbit ring ~15% clear of the canvas edge
+  return { lo: R / (30.069 * 1.15), hi: R / 1.0 };
 }
 
 function getScale() {
@@ -317,12 +293,15 @@ function tc(x, y, sc) {
   return { sx: cx + x * sc, sy: cy - y * sc };
 }
 
-// Speed slider 0–100 → days/sec (log scale, 50 = paused)
+// Speed slider 0–100 → days/sec
+// Log scale: just outside the pause zone gives 1 d/s; full deflection gives 12053 d/s (33 yr/s).
+// Planet "orbit once per second" speeds (88–60182 d/s) fall naturally on log scale.
+// 10^(t * log10(12053)) where log10(12053) ≈ 4.081
 function sliderToSpeed(v) {
-  const s = (v - 50) / 50;              // −1 to +1
-  if (Math.abs(s) < 0.04) return 0;
-  const t = (Math.abs(s) - 0.04) / 0.96; // 0 to 1
-  return Math.sign(s) * 0.1 * Math.pow(10, t * 3.7); // ±0.1 to ±500 days/sec
+  const s = (v - 50) / 50;               // −1 to +1
+  if (Math.abs(s) < 0.04) return 0;      // pause zone
+  const t = (Math.abs(s) - 0.04) / 0.96; // 0 to 1 outside pause zone
+  return Math.sign(s) * Math.pow(10, t * 4.081); // ±1 to ±12053 d/s
 }
 
 function speedLabel(dps) {
@@ -496,7 +475,6 @@ function drawEarthCenter() {
 // ── Main render ───────────────────────────────────────────────────────────────
 function render() {
   ctx.clearRect(0, 0, W, H);
-  drawStars();
 
   const sc                  = getScale();
   const { sun, pp, moon }   = getPositions(state.simTime, state.view);
