@@ -411,36 +411,50 @@ function geoDisplayPos(planetIdx, t, mode) {
   return { x, y };
 }
 
-// Draw traced geocentric/sunfixed paths for each planet.
+// Draw traced geocentric paths for each planet.
+// In geo/sunfixed modes: paths are stationary in that frame.
+// In heliocentric mode: geocentric path offset by Earth's *current* helio position,
+//   so the epicycle loops stay centred near each planet and wobble as Earth moves.
 // Past half-orbit: solid line at 55% opacity.
-// Future half-orbit: dashed line at 25% opacity.
+// Future half-orbit: dashed line at 45% opacity.
 function drawPaths(mode, t, sc) {
   ctx.save();
   ctx.lineWidth = 1;
 
+  // Precompute Earth's current heliocentric position for mode 0 offset
+  const ep = PLANETS[EARTH_IDX];
+  const ea_now = ep.a0 + ep.n * t;
+  const earthNow = { x: ep.sma * Math.cos(ea_now), y: ep.sma * Math.sin(ea_now) };
+
   for (let pi = 0; pi < PLANETS.length; pi++) {
-    if (pi === EARTH_IDX) continue; // Earth is the origin
+    if (pi === EARTH_IDX) continue; // skip Earth in all modes
 
     const p = PLANETS[pi];
 
     // Adaptive sample count: aim for ~60 pts per retrograde loop.
-    // Synodic period = 1/|1/T_planet − 1/T_earth|
-    const synodic   = 1 / Math.abs(1 / p.period - 1 / 365.25);
-    // For inner planets (Mercury, Venus) the heliocentric half-period is shorter
-    // than their synodic period, so their geocentric loop wouldn't close.
-    // Use whichever is larger to guarantee at least one complete loop each way.
-    const halfPer   = Math.max(p.period / 2, synodic);
-    const nLoops    = Math.max(0.5, halfPer / synodic);
-    const N         = Math.min(4000, Math.max(360, Math.ceil(nLoops * 60)));
-    const dtStep    = (2 * halfPer) / N; // step covers the full window [t-halfPer, t+halfPer]
+    const synodic = 1 / Math.abs(1 / p.period - 1 / 365.25);
+    const halfPer = Math.max(p.period / 2, synodic);
+    const nLoops  = Math.max(0.5, halfPer / synodic);
+    const N       = Math.min(4000, Math.max(360, Math.ceil(nLoops * 60)));
+    const dtStep  = (2 * halfPer) / N;
+
+    // Sample position in the display frame at time ti
+    const samplePos = (ti) => {
+      if (mode === 0) {
+        // Geocentric position at ti, shifted by Earth's position *now*
+        // → epicycle loop stays near the planet's heliocentric orbit position
+        const geo = geoDisplayPos(pi, ti, 1); // 1 = plain geocentric, no rotation
+        return { x: geo.x + earthNow.x, y: geo.y + earthNow.y };
+      }
+      return geoDisplayPos(pi, ti, mode);
+    };
 
     // Past path: from (t − halfPer) to t
     ctx.setLineDash([]);
     ctx.strokeStyle = colorRgba(p.color, 0.55);
     ctx.beginPath();
     for (let i = 0; i <= N / 2; i++) {
-      const ti = t - halfPer + i * dtStep;
-      const pos = geoDisplayPos(pi, ti, mode);
+      const pos = samplePos(t - halfPer + i * dtStep);
       const { sx, sy } = tc(pos.x, pos.y, sc);
       i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
     }
@@ -451,8 +465,7 @@ function drawPaths(mode, t, sc) {
     ctx.strokeStyle = colorRgba(p.color, 0.45);
     ctx.beginPath();
     for (let i = 0; i <= N / 2; i++) {
-      const ti = t + i * dtStep;
-      const pos = geoDisplayPos(pi, ti, mode);
+      const pos = samplePos(t + i * dtStep);
       const { sx, sy } = tc(pos.x, pos.y, sc);
       i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
     }
@@ -560,8 +573,7 @@ function render() {
   const { sun, pp, moon }   = getPositions(state.simTime, state.view);
   const earthCenter         = state.view === 0 ? pp[EARTH_IDX] : { x: 0, y: 0 };
 
-  if (state.paths && state.view !== 0) {
-    // Traced epicycle paths replace the circular orbit rings
+  if (state.paths) {
     drawPaths(state.view, state.simTime, sc);
   } else {
     drawOrbitRings(sun, sc);
