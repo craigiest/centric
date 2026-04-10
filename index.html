@@ -97,6 +97,8 @@ body {
   line-height: 1;
 }
 .btn:hover { background: #181838; color: #ddeeff; }
+.btn.active { background: #1a2840; color: #88bbff; border-color: #3355aa; }
+#btn-paths { width: auto; padding: 0 8px; }
 
 .val {
   font-size: 11px;
@@ -149,6 +151,7 @@ canvas {
 
 <div id="controls">
   <button id="view-toggle">&#9728; Heliocentric</button>
+  <button class="btn" id="btn-paths" title="Show traced epicycle paths (geocentric modes only)">Paths</button>
   <div id="date-display">—</div>
   <div class="sep"></div>
   <div class="grp">
@@ -209,7 +212,8 @@ MOON.a0 = MOON.L0 * DEG;
 // ── State ────────────────────────────────────────────────────────────────────
 const state = {
   simTime:    (Date.now() - J2000_MS) / 86400000, // days since J2000
-  view: 0,          // 0 = heliocentric, 1 = geocentric, 2 = sunfixed (Earth center, Sun at 12 o'clock)
+  view:  0,         // 0 = heliocentric, 1 = geocentric, 2 = sunfixed (Earth center, Sun at 12 o'clock)
+  paths: false,     // show traced epicycle paths instead of orbit rings (geo modes only)
   speed:      72,   // slider 0–100; 50 = paused
   zoom:       0.5,  // 0 = Neptune fits view, 1 = Earth orbit fills view
   lastTs:     null,
@@ -383,6 +387,79 @@ function drawOrbitRings(sunPos, sc) {
   ctx.restore();
 }
 
+// Convert '#rrggbb' + alpha 0–1 to rgba() string
+function colorRgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+
+// Compute geocentric (or sunfixed) display position for one planet at time t,
+// without allocating intermediate objects for all 8 planets.
+function geoDisplayPos(planetIdx, t, mode) {
+  const ep = PLANETS[EARTH_IDX];
+  const ea = ep.a0 + ep.n * t;
+  const ex = ep.sma * Math.cos(ea), ey = ep.sma * Math.sin(ea);
+  const pp = PLANETS[planetIdx];
+  const pa = pp.a0 + pp.n * t;
+  let x = pp.sma * Math.cos(pa) - ex;
+  let y = pp.sma * Math.sin(pa) - ey;
+  if (mode === 2) {
+    const theta = Math.PI / 2 - Math.atan2(-ey, -ex);
+    const c = Math.cos(theta), s = Math.sin(theta);
+    return { x: x*c - y*s, y: x*s + y*c };
+  }
+  return { x, y };
+}
+
+// Draw traced geocentric/sunfixed paths for each planet.
+// Past half-orbit: solid line at 55% opacity.
+// Future half-orbit: dashed line at 25% opacity.
+function drawPaths(mode, t, sc) {
+  ctx.save();
+  ctx.lineWidth = 1;
+
+  for (let pi = 0; pi < PLANETS.length; pi++) {
+    if (pi === EARTH_IDX) continue; // Earth is the origin
+
+    const p = PLANETS[pi];
+
+    // Adaptive sample count: aim for ~60 pts per retrograde loop.
+    // Synodic period = 1/|1/T_planet − 1/T_earth|
+    const synodic   = 1 / Math.abs(1 / p.period - 1 / 365.25);
+    const halfPer   = p.period / 2;
+    const nLoops    = Math.max(0.5, halfPer / synodic);
+    const N         = Math.min(4000, Math.max(360, Math.ceil(nLoops * 60)));
+    const dtStep    = p.period / N; // time step between samples
+
+    // Past path: from (t − halfPer) to t
+    ctx.setLineDash([]);
+    ctx.strokeStyle = colorRgba(p.color, 0.55);
+    ctx.beginPath();
+    for (let i = 0; i <= N / 2; i++) {
+      const ti = t - halfPer + i * dtStep;
+      const pos = geoDisplayPos(pi, ti, mode);
+      const { sx, sy } = tc(pos.x, pos.y, sc);
+      i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+    }
+    ctx.stroke();
+
+    // Future path: from t to (t + halfPer)
+    ctx.setLineDash([4, 5]);
+    ctx.strokeStyle = colorRgba(p.color, 0.25);
+    ctx.beginPath();
+    for (let i = 0; i <= N / 2; i++) {
+      const ti = t + i * dtStep;
+      const pos = geoDisplayPos(pi, ti, mode);
+      const { sx, sy } = tc(pos.x, pos.y, sc);
+      i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+    }
+    ctx.stroke();
+  }
+
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
 function drawSaturnRings(sx, sy, pr) {
   ctx.save();
   ctx.lineWidth = 2.5;
@@ -480,9 +557,13 @@ function render() {
   const { sun, pp, moon }   = getPositions(state.simTime, state.view);
   const earthCenter         = state.view === 0 ? pp[EARTH_IDX] : { x: 0, y: 0 };
 
-  drawOrbitRings(sun, sc);
-  // Moon orbit ring: show in geo/sunfixed modes where Earth is at canvas center
-  if (state.view !== 0) drawMoonOrbitRing(earthCenter, sc);
+  if (state.paths && state.view !== 0) {
+    // Traced epicycle paths replace the circular orbit rings
+    drawPaths(state.view, state.simTime, sc);
+  } else {
+    drawOrbitRings(sun, sc);
+    if (state.view !== 0) drawMoonOrbitRing(earthCenter, sc);
+  }
   drawSun(sun, sc);
 
   for (let i = 0; i < PLANETS.length; i++) {
@@ -549,6 +630,12 @@ document.getElementById('view-toggle').addEventListener('click', function () {
   state.view = (state.view + 1) % 3;
   this.textContent = VIEW_LABELS[state.view];
   this.className   = VIEW_CLASSES[state.view]; // replaces all classes
+});
+
+// Paths toggle (only active in geocentric modes)
+document.getElementById('btn-paths').addEventListener('click', function () {
+  state.paths = !state.paths;
+  this.classList.toggle('active', state.paths);
 });
 
 // Speed slider
