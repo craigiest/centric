@@ -444,8 +444,8 @@ function drawPaths(mode, t, sc) {
     ctx.stroke();
 
     // Future path: from t to (t + halfPer)
-    ctx.setLineDash([4, 5]);
-    ctx.strokeStyle = colorRgba(p.color, 0.25);
+    ctx.setLineDash([5, 3]);
+    ctx.strokeStyle = colorRgba(p.color, 0.45);
     ctx.beginPath();
     for (let i = 0; i <= N / 2; i++) {
       const ti = t + i * dtStep;
