@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solar System Orbits</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #000;
+  overflow: hidden;
+  font-family: 'Courier New', monospace;
+  color: #ccc;
+}
+
+#controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: #05050f;
+  border-bottom: 1px solid #181830;
+  height: 52px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+#view-toggle {
+  background: #141428;
+  color: #99bbee;
+  border: 1px solid #2a2a50;
+  border-radius: 20px;
+  padding: 5px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+#view-toggle:hover { background: #1e1e44; }
+#view-toggle.geo {
+  background: #0e280e;
+  color: #88ee88;
+  border-color: #2a4a2a;
+}
+
+#date-display {
+  color: #6688aa;
+  font-size: 12px;
+  flex-shrink: 0;
+  min-width: 96px;
+}
+
+.sep {
+  width: 1px;
+  height: 28px;
+  background: #181830;
+  flex-shrink: 0;
+}
+
+.grp {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lbl {
+  font-size: 10px;
+  color: #445;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.btn {
+  background: #0e0e22;
+  color: #8899bb;
+  border: 1px solid #2a2a44;
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: inherit;
+  padding: 0;
+  line-height: 1;
+}
+.btn:hover { background: #181838; color: #ddeeff; }
+
+.val {
+  font-size: 11px;
+  color: #778;
+  min-width: 72px;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: #151530;
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #4466bb;
+  cursor: pointer;
+}
+input[type=range]::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #4466bb;
+  cursor: pointer;
+  border: none;
+}
+
+#speed-slider { width: 120px; }
+#zoom-slider  { width: 90px; }
+
+canvas {
+  display: block;
+  width: 100vw;
+  height: calc(100vh - 52px);
+  cursor: crosshair;
+}
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <button id="view-toggle">&#9728; Heliocentric</button>
+  <div id="date-display">—</div>
+  <div class="sep"></div>
+  <div class="grp">
+    <span class="lbl">Time</span>
+    <button class="btn" id="btn-rev" title="Reverse direction">&#8644;</button>
+    <input type="range" id="speed-slider" min="0" max="100" value="72">
+    <button class="btn" id="btn-pause" title="Pause">&#9646;&#9646;</button>
+    <div class="val" id="speed-val">—</div>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <span class="lbl">Zoom</span>
+    <button class="btn" id="btn-zout">&#8722;</button>
+    <input type="range" id="zoom-slider" min="0" max="100" value="50">
+    <button class="btn" id="btn-zin">+</button>
+    <div class="val" id="zoom-val">—</div>
+  </div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+'use strict';
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const TAU = 2 * Math.PI;
+const DEG = Math.PI / 180;
+const J2000_MS = Date.UTC(2000, 0, 1, 12, 0, 0);
+
+// ── Planet data ──────────────────────────────────────────────────────────────
+// sma: semi-major axis (AU), period: sidereal period (days)
+// L0:  mean longitude at J2000 epoch (degrees)
+// px:  display radius (pixels, exaggerated for visibility)
+const PLANETS = [
+  { name: 'Mercury', sma: 0.387,  period: 87.969,   L0: 252.250,  px: 3,  color: '#a8a8a8' },
+  { name: 'Venus',   sma: 0.723,  period: 224.701,  L0: 181.980,  px: 5,  color: '#e8cda0' },
+  { name: 'Earth',   sma: 1.000,  period: 365.250,  L0: 100.464,  px: 5,  color: '#4fa3e0' },
+  { name: 'Mars',    sma: 1.524,  period: 686.971,  L0: 355.433,  px: 4,  color: '#c1440e' },
+  { name: 'Jupiter', sma: 5.203,  period: 4332.589, L0: 34.396,   px: 12, color: '#c88b3a' },
+  { name: 'Saturn',  sma: 9.537,  period: 10759.22, L0: 50.077,   px: 10, color: '#e4d191', rings: true },
+  { name: 'Uranus',  sma: 19.191, period: 30688.5,  L0: 314.055,  px: 7,  color: '#7de8e8' },
+  { name: 'Neptune', sma: 30.069, period: 60182.0,  L0: 304.349,  px: 7,  color: '#3f54ba' },
+];
+
+// Pre-compute angular velocity (rad/day) and initial angle (rad) for each planet
+PLANETS.forEach(p => {
+  p.n  = TAU / p.period;   // mean motion (rad/day)
+  p.a0 = p.L0 * DEG;       // initial angle at J2000 (rad)
+});
+
+const EARTH_IDX = 2;
+
+// ── State ────────────────────────────────────────────────────────────────────
+const state = {
+  simTime:    (Date.now() - J2000_MS) / 86400000, // days since J2000
+  geocentric: false,
+  speed:      72,   // slider 0–100; 50 = paused
+  zoom:       0.5,  // 0 = Neptune fits view, 1 = Earth orbit fills view
+  lastTs:     null,
+};
+
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+let W, H, cx, cy;
+
+function resize() {
+  W  = canvas.width  = Math.round(canvas.clientWidth);
+  H  = canvas.height = Math.round(canvas.clientHeight);
+  cx = W / 2;
+  cy = H / 2;
+  initStars();
+}
+
+// ── Starfield ────────────────────────────────────────────────────────────────
+let stars = [];
+
+function initStars() {
+  stars = [];
+  for (let i = 0; i < 300; i++) {
+    stars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() < 0.12 ? 1.5 : 1,
+      a: 0.25 + Math.random() * 0.65,
+    });
+  }
+}
+
+function drawStars() {
+  for (const s of stars) {
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, TAU);
+    ctx.fillStyle = `rgba(255,255,255,${s.a.toFixed(2)})`;
+    ctx.fill();
+  }
+}
+
+// ── Math helpers ─────────────────────────────────────────────────────────────
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// Heliocentric (x, y) in AU for planet p at simTime t (days since J2000)
+function helioPos(p, t) {
+  const a = p.a0 + p.n * t;
+  return { x: p.sma * Math.cos(a), y: p.sma * Math.sin(a) };
+}
+
+// Returns positions in the current reference frame (AU)
+// In geocentric mode all positions are relative to Earth; Sun is at -Earth.
+function getPositions(t, geo) {
+  const pp  = PLANETS.map(p => helioPos(p, t));
+  let   sun = { x: 0, y: 0 };
+
+  if (geo) {
+    const ex = pp[EARTH_IDX].x;
+    const ey = pp[EARTH_IDX].y;
+    sun = { x: -ex, y: -ey };
+    for (let i = 0; i < pp.length; i++) {
+      pp[i] = { x: pp[i].x - ex, y: pp[i].y - ey };
+    }
+    // pp[EARTH_IDX] is now {0,0} — Earth is the origin
+  }
+
+  return { sun, pp };
+}
+
+// Zoom & scale
+// zoom 0 → min scale (Neptune's orbit just fits)
+// zoom 1 → max scale (Earth's orbit fills view)
+function scaleRange() {
+  const R = Math.min(W, H) / 2;
+  return { lo: R / 30.069, hi: R / 1.0 };
+}
+
+function getScale() {
+  const { lo, hi } = scaleRange();
+  return lo * Math.pow(hi / lo, state.zoom); // logarithmic interpolation
+}
+
+// AU → canvas pixel coordinates (y flipped: +y = up)
+function tc(x, y, sc) {
+  return { sx: cx + x * sc, sy: cy - y * sc };
+}
+
+// Speed slider 0–100 → days/sec (log scale, 50 = paused)
+function sliderToSpeed(v) {
+  const s = (v - 50) / 50;              // −1 to +1
+  if (Math.abs(s) < 0.04) return 0;
+  const t = (Math.abs(s) - 0.04) / 0.96; // 0 to 1
+  return Math.sign(s) * 0.1 * Math.pow(10, t * 3.7); // ±0.1 to ±500 days/sec
+}
+
+function speedLabel(dps) {
+  if (dps === 0) return 'paused';
+  const dir = dps < 0 ? '\u2190 ' : '';
+  const a   = Math.abs(dps);
+  if (a <   2) return `${dir}${a.toFixed(1)} d/s`;
+  if (a <  60) return `${dir}${Math.round(a)} d/s`;
+  if (a < 730) return `${dir}${(a / 30.44).toFixed(1)} mo/s`;
+  return `${dir}${(a / 365.25).toFixed(1)} yr/s`;
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────────────
+function drawSun(sunPos, sc) {
+  const { sx, sy } = tc(sunPos.x, sunPos.y, sc);
+
+  // Glow
+  const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, 46);
+  g.addColorStop(0,   'rgba(255,255,200,1)');
+  g.addColorStop(0.22,'rgba(255,220,60,0.95)');
+  g.addColorStop(0.55,'rgba(255,130,10,0.30)');
+  g.addColorStop(1,   'rgba(255,80,0,0)');
+  ctx.beginPath();
+  ctx.arc(sx, sy, 46, 0, TAU);
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  // Disk
+  ctx.beginPath();
+  ctx.arc(sx, sy, 18, 0, TAU);
+  ctx.fillStyle = '#fff8c0';
+  ctx.fill();
+
+  // Label
+  ctx.font = '11px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,210,70,0.70)';
+  ctx.fillText('Sun', sx, sy + 32);
+}
+
+function drawOrbitRings(sunPos, sc) {
+  // Orbit rings are always centered on the Sun (even in geocentric mode).
+  // In geocentric, the sun is at sunPos (moving), so rings move with it.
+  const { sx: ssx, sy: ssy } = tc(sunPos.x, sunPos.y, sc);
+  ctx.save();
+  ctx.setLineDash([2, 5]);
+  ctx.lineWidth = 1;
+  for (const p of PLANETS) {
+    ctx.beginPath();
+    ctx.arc(ssx, ssy, p.sma * sc, 0, TAU);
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawSaturnRings(sx, sy, pr) {
+  ctx.save();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = 'rgba(228,209,130,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, pr * 2.4, pr * 0.65, 0.42, 0, TAU);
+  ctx.stroke();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(200,178,90,0.30)';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, pr * 1.78, pr * 0.48, 0.42, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPlanet(p, pos, sc) {
+  const { sx, sy } = tc(pos.x, pos.y, sc);
+  const pr = p.px;
+
+  if (p.rings) drawSaturnRings(sx, sy, pr);
+
+  // Subtle glow behind planet
+  const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, pr * 2.5);
+  glow.addColorStop(0, p.color + 'aa');
+  glow.addColorStop(1, p.color + '00');
+  ctx.beginPath();
+  ctx.arc(sx, sy, pr * 2.5, 0, TAU);
+  ctx.fillStyle = glow;
+  ctx.fill();
+
+  // Planet disk
+  ctx.beginPath();
+  ctx.arc(sx, sy, pr, 0, TAU);
+  ctx.fillStyle = p.color;
+  ctx.fill();
+
+  // Label
+  ctx.font = '11px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = p.color + '99';
+  ctx.fillText(p.name, sx, sy + pr + 13);
+}
+
+function drawEarthCenter() {
+  // Cross-hair + dot to mark Earth's position in geocentric mode
+  const r = 7;
+  ctx.save();
+  ctx.strokeStyle = '#4fa3e0';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
+  ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3.5, 0, TAU);
+  ctx.fillStyle = '#4fa3e0';
+  ctx.fill();
+  ctx.font = '11px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#4fa3e099';
+  ctx.fillText('Earth', cx, cy + r + 13);
+  ctx.restore();
+}
+
+// ── Main render ───────────────────────────────────────────────────────────────
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  drawStars();
+
+  const sc            = getScale();
+  const { sun, pp }   = getPositions(state.simTime, state.geocentric);
+
+  drawOrbitRings(sun, sc);
+  drawSun(sun, sc);
+
+  for (let i = 0; i < PLANETS.length; i++) {
+    if (state.geocentric && i === EARTH_IDX) continue; // Earth is the origin
+    drawPlanet(PLANETS[i], pp[i], sc);
+  }
+
+  if (state.geocentric) drawEarthCenter();
+
+  // Simulated date
+  const d = new Date(J2000_MS + state.simTime * 86400000);
+  document.getElementById('date-display').textContent =
+    d.toLocaleDateString('en-US', {
+      year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC',
+    });
+}
+
+// ── Animation loop ────────────────────────────────────────────────────────────
+function tick(ts) {
+  if (state.lastTs !== null) {
+    const dt = Math.min((ts - state.lastTs) / 1000, 0.1); // cap at 100 ms
+    state.simTime += sliderToSpeed(state.speed) * dt;
+  }
+  state.lastTs = ts;
+  render();
+  requestAnimationFrame(tick);
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+function updateSpeedUI() {
+  document.getElementById('speed-val').textContent =
+    speedLabel(sliderToSpeed(state.speed));
+}
+
+function setZoom(z) {
+  state.zoom = clamp(z, 0, 1);
+  document.getElementById('zoom-slider').value = Math.round(state.zoom * 100);
+  updateZoomUI();
+}
+
+function updateZoomUI() {
+  // Label showing which planet's orbit roughly fills the view
+  const breakpoints = [
+    [0.12, 'Neptune'],
+    [0.28, 'Uranus'],
+    [0.46, 'Saturn'],
+    [0.62, 'Jupiter'],
+    [0.82, 'Mars'],
+    [1.01, 'Earth orbit'],
+  ];
+  let label = 'Neptune';
+  for (const [thresh, name] of breakpoints) {
+    if (state.zoom <= thresh) { label = name; break; }
+  }
+  document.getElementById('zoom-val').textContent = label;
+}
+
+// View toggle
+document.getElementById('view-toggle').addEventListener('click', function () {
+  state.geocentric = !state.geocentric;
+  this.textContent = state.geocentric ? '\uD83C\uDF0D Geocentric' : '\u2600 Heliocentric';
+  this.classList.toggle('geo', state.geocentric);
+});
+
+// Speed slider
+const spSlider = document.getElementById('speed-slider');
+spSlider.addEventListener('input', () => {
+  state.speed = +spSlider.value;
+  updateSpeedUI();
+});
+
+// Pause button
+document.getElementById('btn-pause').addEventListener('click', () => {
+  state.speed = 50;
+  spSlider.value = 50;
+  updateSpeedUI();
+});
+
+// Reverse: mirror slider around 50
+document.getElementById('btn-rev').addEventListener('click', () => {
+  state.speed = 100 - state.speed;
+  spSlider.value = state.speed;
+  updateSpeedUI();
+});
+
+// Zoom slider
+const zmSlider = document.getElementById('zoom-slider');
+zmSlider.addEventListener('input', () => {
+  state.zoom = +zmSlider.value / 100;
+  updateZoomUI();
+});
+
+document.getElementById('btn-zout').addEventListener('click', () => setZoom(state.zoom - 0.08));
+document.getElementById('btn-zin' ).addEventListener('click', () => setZoom(state.zoom + 0.08));
+
+// Scroll-wheel zoom on canvas
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  setZoom(state.zoom + (e.deltaY < 0 ? 0.06 : -0.06));
+}, { passive: false });
+
+window.addEventListener('resize', resize);
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+resize();
+updateSpeedUI();
+updateZoomUI();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
