@@ -372,12 +372,12 @@ function drawOrbitRings(sunPos, sc) {
   // In geocentric, the sun is at sunPos (moving), so rings move with it.
   const { sx: ssx, sy: ssy } = tc(sunPos.x, sunPos.y, sc);
   ctx.save();
-  ctx.setLineDash([2, 5]);
-  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 4]);
+  ctx.lineWidth = 1.5;
   for (const p of PLANETS) {
     ctx.beginPath();
     ctx.arc(ssx, ssy, p.sma * sc, 0, TAU);
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
     ctx.stroke();
   }
   ctx.restore();
