@@ -432,7 +432,7 @@ function drawPaths(mode, t, sc) {
     const halfPer   = Math.max(p.period / 2, synodic);
     const nLoops    = Math.max(0.5, halfPer / synodic);
     const N         = Math.min(4000, Math.max(360, Math.ceil(nLoops * 60)));
-    const dtStep    = p.period / N; // time step between samples
+    const dtStep    = (2 * halfPer) / N; // step covers the full window [t-halfPer, t+halfPer]
 
     // Past path: from (t − halfPer) to t
     ctx.setLineDash([]);
