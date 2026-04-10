@@ -421,10 +421,16 @@ function drawPaths(mode, t, sc) {
   ctx.save();
   ctx.lineWidth = 1;
 
-  // Precompute Earth's current heliocentric position for mode 0 offset
+  // Precompute Earth's current heliocentric position (needed for modes 0 and 2)
   const ep = PLANETS[EARTH_IDX];
   const ea_now = ep.a0 + ep.n * t;
   const earthNow = { x: ep.sma * Math.cos(ea_now), y: ep.sma * Math.sin(ea_now) };
+
+  // For Sun Fixed mode: one rotation angle from the *current* frame.
+  // All sample points are rotated by this same θ so the path lives in a
+  // single consistent frame (rather than each point being in its own frame).
+  const thetaNow = Math.PI / 2 - Math.atan2(-earthNow.y, -earthNow.x);
+  const cosT = Math.cos(thetaNow), sinT = Math.sin(thetaNow);
 
   for (let pi = 0; pi < PLANETS.length; pi++) {
     if (pi === EARTH_IDX) continue; // skip Earth in all modes
@@ -440,13 +446,18 @@ function drawPaths(mode, t, sc) {
 
     // Sample position in the display frame at time ti
     const samplePos = (ti) => {
+      // Always start with plain geocentric position at ti
+      const geo = geoDisplayPos(pi, ti, 1);
       if (mode === 0) {
-        // Geocentric position at ti, shifted by Earth's position *now*
-        // → epicycle loop stays near the planet's heliocentric orbit position
-        const geo = geoDisplayPos(pi, ti, 1); // 1 = plain geocentric, no rotation
+        // Shift by Earth's current helio position → loop stays near planet's orbit
         return { x: geo.x + earthNow.x, y: geo.y + earthNow.y };
       }
-      return geoDisplayPos(pi, ti, mode);
+      if (mode === 2) {
+        // Rotate by the *current* Sun Fixed angle (not the angle at ti) so all
+        // sample points share the same frame — paths rotate as Earth orbits
+        return { x: geo.x * cosT - geo.y * sinT, y: geo.x * sinT + geo.y * cosT };
+      }
+      return geo; // mode 1: plain geocentric, no transform needed
     };
 
     // Past path: from (t − halfPer) to t
