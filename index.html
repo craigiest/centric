@@ -511,7 +511,82 @@ function drawPaths(mode, t, sc) {
   ctx.restore();
 }
 
-function drawSaturnRings(sx, sy, pr) {
+// Draw Ptolemaic epicycles for each planet in geocentric view.
+// A planet's geocentric position decomposes into two circular motions:
+//   deferent arm  →  planet's heliocentric position  (radius = planet sma)
+//   epicycle arm  →  subtract Earth's heliocentric position (radius = 1 AU)
+// The deferent ring is centred on Earth; the epicycle ring is centred on the
+// moving deferent tip, and the planet sits at the tip of the epicycle arm.
+function drawEpicycles(mode, t, sc) {
+  ctx.save();
+
+  // Earth heliocentric position (to compute deferent tip and sun-fixed rotation)
+  const ep = PLANETS[EARTH_IDX];
+  const ea = ep.a0 + ep.n * t;
+  const earthH = { x: ep.sma * Math.cos(ea), y: ep.sma * Math.sin(ea) };
+
+  // Sun-fixed rotation matrix (same logic as drawPaths)
+  let cosT = 1, sinT = 0;
+  if (mode === 2) {
+    const theta = Math.PI / 2 - Math.atan2(-earthH.y, -earthH.x);
+    cosT = Math.cos(theta); sinT = Math.sin(theta);
+  }
+  const rot = v => ({ x: v.x * cosT - v.y * sinT, y: v.x * sinT + v.y * cosT });
+
+  for (let pi = 0; pi < PLANETS.length; pi++) {
+    if (pi === EARTH_IDX) continue;
+
+    const p   = PLANETS[pi];
+    const pH  = helioPos(p, t);                                      // planet heliocentric
+    const def = rot(pH);                                             // deferent tip (in display frame)
+    const geo = rot({ x: pH.x - earthH.x, y: pH.y - earthH.y });   // planet geocentric
+
+    const { sx: ex, sy: ey } = tc(0,       0,       sc);  // Earth
+    const { sx: dx, sy: dy } = tc(def.x,   def.y,   sc);  // deferent tip
+    const { sx: gx, sy: gy } = tc(geo.x,   geo.y,   sc);  // planet
+
+    // Deferent ring — centred on Earth, radius = planet sma
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 5]);
+    ctx.strokeStyle = colorRgba(p.color, 0.20);
+    ctx.beginPath();
+    ctx.arc(ex, ey, p.sma * sc, 0, TAU);
+    ctx.stroke();
+
+    // Epicycle ring — centred on deferent tip, radius = 1 AU
+    ctx.strokeStyle = colorRgba(p.color, 0.35);
+    ctx.beginPath();
+    ctx.arc(dx, dy, 1.0 * sc, 0, TAU);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+
+    // Deferent arm: Earth → deferent tip
+    ctx.strokeStyle = colorRgba(p.color, 0.28);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(dx, dy);
+    ctx.stroke();
+
+    // Epicycle arm: deferent tip → planet
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = colorRgba(p.color, 0.70);
+    ctx.beginPath();
+    ctx.moveTo(dx, dy);
+    ctx.lineTo(gx, gy);
+    ctx.stroke();
+
+    // Dot marking the epicycle pivot (deferent tip)
+    ctx.beginPath();
+    ctx.arc(dx, dy, 2.5, 0, TAU);
+    ctx.fillStyle = colorRgba(p.color, 0.55);
+    ctx.fill();
+  }
+
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
   ctx.save();
   ctx.lineWidth = 2.5;
   ctx.strokeStyle = 'rgba(228,209,130,0.55)';
@@ -613,6 +688,13 @@ function render() {
   } else if (state.paths === 0) {
     drawOrbitRings(sun, sc);
     if (state.view !== 0) drawMoonOrbitRing(earthCenter, sc);
+  } else if (state.paths === 3) {
+    if (state.view === 0) {
+      drawOrbitRings(sun, sc); // heliocentric: fall back to orbit rings
+    } else {
+      drawEpicycles(state.view, state.simTime, sc);
+      drawMoonOrbitRing(earthCenter, sc);
+    }
   }
   // state.paths === 2: off — draw nothing
   drawSun(sun, sc);
@@ -696,12 +778,15 @@ document.getElementById('view-toggle').addEventListener('click', function () {
   this.className   = VIEW_CLASSES[state.view]; // replaces all classes
 });
 
-// Paths toggle — cycles: Rings → Paths → Off → Rings …
-const PATHS_LABELS = ['Rings', 'Paths', 'Off'];
+// Paths toggle — cycles: Rings → Paths → Epicycles → Off → Rings …
+const PATHS_LABELS = ['Rings', 'Paths', 'Off', 'Epicycles'];
 document.getElementById('btn-paths').addEventListener('click', function () {
-  state.paths = (state.paths + 1) % 3;
+  // cycle order: 0 Rings → 1 Paths → 3 Epicycles → 2 Off → 0 Rings
+  const ORDER = [0, 1, 3, 2];
+  const cur = ORDER.indexOf(state.paths);
+  state.paths = ORDER[(cur + 1) % ORDER.length];
   this.textContent = PATHS_LABELS[state.paths];
-  this.classList.toggle('active', state.paths === 1);
+  this.classList.toggle('active', state.paths !== 2);
 });
 
 // Speed slider
