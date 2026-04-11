@@ -12,18 +12,20 @@ body {
   overflow: hidden;
   font-family: 'Courier New', monospace;
   color: #ccc;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
 }
 
 #controls {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 14px;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 12px;
   background: #05050f;
   border-bottom: 1px solid #181830;
-  height: 52px;
-  white-space: nowrap;
-  overflow: hidden;
+  flex-shrink: 0;
 }
 
 #view-toggle {
@@ -141,9 +143,18 @@ input[type=range]::-moz-range-thumb {
 
 canvas {
   display: block;
-  width: 100vw;
-  height: calc(100vh - 52px);
+  width: 100%;
+  flex: 1;
+  min-height: 0;
   cursor: crosshair;
+}
+
+/* On narrow screens, shrink sliders and hide decorative separators */
+@media (max-width: 600px) {
+  #speed-slider { width: 80px; }
+  #zoom-slider  { width: 65px; }
+  .sep          { display: none; }
+  .val          { min-width: 56px; font-size: 10px; }
 }
 </style>
 </head>
@@ -151,7 +162,7 @@ canvas {
 
 <div id="controls">
   <button id="view-toggle">&#9728; Heliocentric</button>
-  <button class="btn" id="btn-paths" title="Show traced epicycle paths (geocentric modes only)">Paths</button>
+  <button class="btn" id="btn-paths" title="Toggle orbit rings / epicycle paths / off">Rings</button>
   <div id="date-display">—</div>
   <div class="sep"></div>
   <div class="grp">
@@ -165,7 +176,7 @@ canvas {
   <div class="grp">
     <span class="lbl">Zoom</span>
     <button class="btn" id="btn-zout">&#8722;</button>
-    <input type="range" id="zoom-slider" min="0" max="100" value="50">
+    <input type="range" id="zoom-slider" min="0" max="100" value="0">
     <button class="btn" id="btn-zin">+</button>
     <div class="val" id="zoom-val">—</div>
   </div>
@@ -213,9 +224,9 @@ MOON.a0 = MOON.L0 * DEG;
 const state = {
   simTime:    (Date.now() - J2000_MS) / 86400000, // days since J2000
   view:  0,         // 0 = heliocentric, 1 = geocentric, 2 = sunfixed (Earth center, Sun at 12 o'clock)
-  paths: false,     // show traced epicycle paths instead of orbit rings (geo modes only)
+  paths: 0,         // 0 = rings, 1 = epicycle paths, 2 = off
   speed:      72,   // slider 0–100; 50 = paused
-  zoom:       0.5,  // 0 = Neptune fits view, 1 = Earth orbit fills view
+  zoom:       0,    // 0 = Neptune fits view, 1 = Earth orbit fills view
   lastTs:     null,
 };
 
@@ -584,12 +595,13 @@ function render() {
   const { sun, pp, moon }   = getPositions(state.simTime, state.view);
   const earthCenter         = state.view === 0 ? pp[EARTH_IDX] : { x: 0, y: 0 };
 
-  if (state.paths) {
+  if (state.paths === 1) {
     drawPaths(state.view, state.simTime, sc);
-  } else {
+  } else if (state.paths === 0) {
     drawOrbitRings(sun, sc);
     if (state.view !== 0) drawMoonOrbitRing(earthCenter, sc);
   }
+  // state.paths === 2: off — draw nothing
   drawSun(sun, sc);
 
   for (let i = 0; i < PLANETS.length; i++) {
@@ -658,10 +670,12 @@ document.getElementById('view-toggle').addEventListener('click', function () {
   this.className   = VIEW_CLASSES[state.view]; // replaces all classes
 });
 
-// Paths toggle (only active in geocentric modes)
+// Paths toggle — cycles: Rings → Paths → Off → Rings …
+const PATHS_LABELS = ['Rings', 'Paths', 'Off'];
 document.getElementById('btn-paths').addEventListener('click', function () {
-  state.paths = !state.paths;
-  this.classList.toggle('active', state.paths);
+  state.paths = (state.paths + 1) % 3;
+  this.textContent = PATHS_LABELS[state.paths];
+  this.classList.toggle('active', state.paths === 1);
 });
 
 // Speed slider
