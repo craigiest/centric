@@ -167,6 +167,25 @@ canvas {
   input[type=range]::-webkit-slider-thumb { width: 22px; height: 22px; }
   input[type=range]::-moz-range-thumb    { width: 22px; height: 22px; }
 }
+#btn-stars {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0a0a1e;
+  border: 1px solid #223;
+  color: #445566;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+  z-index: 10;
+}
+#btn-stars:hover      { color: #7799bb; border-color: #445; }
+#btn-stars.active     { color: #99bbdd; border-color: #446688; }
+
 @keyframes hint-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(170, 220, 255, 0); }
   50%       { box-shadow: 0 0 0 6px rgba(170, 220, 255, 0.55); }
@@ -199,6 +218,7 @@ canvas {
 </div>
 
 <canvas id="canvas"></canvas>
+<button id="btn-stars">★ Stars</button>
 
 <script>
 'use strict';
@@ -254,7 +274,7 @@ const STARS = (() => {
       angle:   rng() * TAU,
       r:       Math.sqrt(rng()),          // uniform density in polar area
       size:    0.5 + rng() * 1.5,         // 0.5–2 px, linear
-      opacity: 0.08 + Math.pow(rng(), 1.5) * 0.42, // 0.08–0.50, skewed faint
+      opacity: 0.05 + Math.pow(rng(), 1.5) * 0.25, // 0.05–0.30, skewed faint
     });
   }
   return out;
@@ -267,6 +287,7 @@ const state = {
   paths: 1,         // 0 = rings, 1 = epicycle paths, 2 = off
   speed:      72,   // slider 0–100; 50 = paused
   zoom:       0.36, // 0 = Neptune fits view, 1 = Earth orbit fills view
+  stars:      false,
   lastTs:     null,
 };
 
@@ -742,7 +763,7 @@ function drawEarthCenter() {
 // ── Main render ───────────────────────────────────────────────────────────────
 function render() {
   ctx.clearRect(0, 0, W, H);
-  drawStars(state.view, state.simTime);
+  if (state.stars) drawStars(state.view, state.simTime);
 
   const sc                  = getScale();
   const { sun, pp, moon }   = getPositions(state.simTime, state.view);
@@ -905,6 +926,12 @@ document.getElementById('btn-zin' ).addEventListener('click', () => zoomStep(+1)
 // Tap date to jump back to today
 document.getElementById('date-display').addEventListener('click', () => {
   state.simTime = (Date.now() - J2000_MS) / 86400000;
+});
+
+// Stars toggle
+document.getElementById('btn-stars').addEventListener('click', function () {
+  state.stars = !state.stars;
+  this.classList.toggle('active', state.stars);
 });
 
 // Scroll-wheel zoom on canvas
