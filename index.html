@@ -167,10 +167,25 @@ canvas {
   input[type=range]::-webkit-slider-thumb { width: 22px; height: 22px; }
   input[type=range]::-moz-range-thumb    { width: 22px; height: 22px; }
 }
-#btn-stars {
+#blurb {
   position: fixed;
-  bottom: 14px;
-  left: 14px;
+  bottom: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(480px, calc(100% - 40px));
+  text-align: center;
+  color: #7a9ab8;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 10px 16px;
+  background: rgba(0,0,5,0.55);
+  border-radius: 6px;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+#blurb:empty { opacity: 0; }
+
+#btn-stars, #btn-explain {
   background: #0a0a1e;
   border: 1px solid #223;
   color: #445566;
@@ -180,10 +195,15 @@ canvas {
   border-radius: 4px;
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s;
+  position: fixed;
+  bottom: 14px;
   z-index: 10;
 }
-#btn-stars:hover      { color: #7799bb; border-color: #445; }
-#btn-stars.active     { color: #99bbdd; border-color: #446688; }
+#btn-stars:hover, #btn-explain:hover { color: #7799bb; border-color: #445; }
+#btn-stars.active, #btn-explain.active { color: #99bbdd; border-color: #446688; }
+
+#btn-stars   { left:  14px; }
+#btn-explain { right: 14px; }
 
 @keyframes hint-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(170, 220, 255, 0); }
@@ -217,7 +237,9 @@ canvas {
 </div>
 
 <canvas id="canvas"></canvas>
+<div id="blurb"></div>
 <button id="btn-stars">★ Stars</button>
+<button id="btn-explain" class="active">? Explain</button>
 
 <script>
 'use strict';
@@ -287,6 +309,7 @@ const state = {
   speed:      72,   // slider 0–100; 50 = paused
   zoom:       0.36, // 0 = Neptune fits view, 1 = Earth orbit fills view
   stars:      false,
+  explain:    true,
   lastTs:     null,
 };
 
@@ -875,6 +898,7 @@ document.getElementById('view-toggle').addEventListener('click', function () {
   this.textContent = VIEW_LABELS[state.view];
   this.className   = VIEW_CLASSES[state.view]; // replaces all classes
   updateHint();
+  updateBlurb();
 });
 
 // Paths toggle — cycles: Rings → Paths → Epicycles → Off → Rings …
@@ -887,9 +911,33 @@ document.getElementById('btn-paths').addEventListener('click', function () {
   this.textContent = PATHS_LABELS[state.paths];
   this.classList.toggle('active', state.paths !== 2);
   updateHint();
+  updateBlurb();
 });
 
 updateHint(); // apply initial hint on page load
+
+// ── Explanatory blurbs ────────────────────────────────────────────────────────
+const BLURBS = {
+  '1,1': "From Earth's perspective, the planets trace looping, wandering paths across the sky. Ancient astronomers observed this apparent motion and struggled to explain it. Why do planets sometimes reverse direction?",
+  '1,3': "To explain the loops, ancient Greek astronomers proposed that each planet rides a small circle \u2014 an \u2018epicycle\u2019 \u2014 whose center itself travels on a larger circle around Earth. The system \u201cworked,\u201d but required ever more circles to match observations. Something felt wrong.",
+  '2,3': "Watch what happens when we keep the Sun stationary instead of Earth. The epicycles are still there \u2014 but notice that the epicycle arm for every planet is exactly the same length, and rotates at exactly the same rate: once per year. That\u2019s a remarkable coincidence. Or is it?",
+  '2,2': "Strip away the construction lines. From the Sun\u2019s vantage point, the planets\u2019 wandering paths vanish entirely. What does the path of each planet appear to be?",
+  '2,0': "Simple, elegant circles \u2014 each planet tracing its own quiet path around the Sun. The complexity was never in the heavens. It was in our choice of vantage point.",
+  '0,0': "The solar system as it is. Each planet orbits the Sun at its own steady pace, closer ones faster, outer ones slower. The apparent chaos of the geocentric model dissolves into one simple picture.",
+};
+
+function updateBlurb() {
+  const key  = `${state.view},${state.paths}`;
+  const text = state.explain ? (BLURBS[key] || '') : '';
+  document.getElementById('blurb').textContent = text;
+}
+updateBlurb();
+
+document.getElementById('btn-explain').addEventListener('click', function () {
+  state.explain = !state.explain;
+  this.classList.toggle('active', state.explain);
+  updateBlurb();
+});
 
 // Speed slider
 const spSlider = document.getElementById('speed-slider');
