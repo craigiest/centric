@@ -253,8 +253,8 @@ const STARS = (() => {
     out.push({
       angle:   rng() * TAU,
       r:       Math.sqrt(rng()),          // uniform density in polar area
-      size:    0.4 + rng() * rng() * 1.6, // skewed toward tiny
-      opacity: 0.04 + rng() * rng() * 0.20,
+      size:    0.5 + rng() * 1.5,         // 0.5–2 px, linear
+      opacity: 0.08 + Math.pow(rng(), 1.5) * 0.42, // 0.08–0.50, skewed faint
     });
   }
   return out;
