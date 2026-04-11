@@ -457,11 +457,12 @@ function drawPaths(mode, t, sc) {
 
     const p = PLANETS[pi];
 
-    // Adaptive sample count: aim for ~60 pts per retrograde loop.
+    // Window = exactly one synodic period total (half back, half forward).
+    // After one synodic period the Earth–planet geometry nearly repeats, so the
+    // path endpoints almost meet.  ~1 sample/day keeps curves smooth.
     const synodic = 1 / Math.abs(1 / p.period - 1 / 365.25);
-    const halfPer = Math.max(p.period / 2, synodic);
-    const nLoops  = Math.max(0.5, halfPer / synodic);
-    const N       = Math.min(4000, Math.max(360, Math.ceil(nLoops * 60)));
+    const halfPer = synodic / 2;
+    const N       = Math.min(2000, Math.max(180, Math.ceil(synodic)));
     const dtStep  = (2 * halfPer) / N;
 
     // Sample position in the display frame at time ti
