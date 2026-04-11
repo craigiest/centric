@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Solar System Orbits</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -149,20 +149,28 @@ canvas {
   cursor: crosshair;
 }
 
-/* On narrow screens, shrink sliders and hide decorative separators */
+/* On narrow screens: larger touch targets, hide decorative separators */
 @media (max-width: 600px) {
-  #speed-slider { width: 80px; }
-  #zoom-slider  { width: 65px; }
+  #controls     { gap: 10px; padding: 8px 12px; }
+  #view-toggle  { font-size: 15px; padding: 7px 16px; }
+  .btn          { width: 40px; height: 40px; font-size: 16px; }
+  #btn-paths    { width: auto; padding: 0 12px; font-size: 14px; }
+  .lbl          { font-size: 12px; }
+  .val          { min-width: 70px; font-size: 12px; }
+  #speed-slider { width: 90px; }
+  #zoom-slider  { width: 75px; }
   .sep          { display: none; }
-  .val          { min-width: 56px; font-size: 10px; }
+  input[type=range]                    { height: 6px; }
+  input[type=range]::-webkit-slider-thumb { width: 22px; height: 22px; }
+  input[type=range]::-moz-range-thumb    { width: 22px; height: 22px; }
 }
 </style>
 </head>
 <body>
 
 <div id="controls">
-  <button id="view-toggle">&#9728; Heliocentric</button>
-  <button class="btn" id="btn-paths" title="Toggle orbit rings / epicycle paths / off">Rings</button>
+  <button id="view-toggle" class="geo">&#127757; Geocentric</button>
+  <button class="btn active" id="btn-paths" title="Toggle orbit rings / epicycle paths / off">Paths</button>
   <div id="date-display">—</div>
   <div class="sep"></div>
   <div class="grp">
@@ -176,7 +184,7 @@ canvas {
   <div class="grp">
     <span class="lbl">Zoom</span>
     <button class="btn" id="btn-zout">&#8722;</button>
-    <input type="range" id="zoom-slider" min="0" max="100" value="0">
+    <input type="range" id="zoom-slider" min="0" max="100" value="36">
     <button class="btn" id="btn-zin">+</button>
     <div class="val" id="zoom-val">—</div>
   </div>
@@ -223,10 +231,10 @@ MOON.a0 = MOON.L0 * DEG;
 // ── State ────────────────────────────────────────────────────────────────────
 const state = {
   simTime:    (Date.now() - J2000_MS) / 86400000, // days since J2000
-  view:  0,         // 0 = heliocentric, 1 = geocentric, 2 = sunfixed (Earth center, Sun at 12 o'clock)
-  paths: 0,         // 0 = rings, 1 = epicycle paths, 2 = off
+  view:  1,         // 0 = heliocentric, 1 = geocentric, 2 = sunfixed (Earth center, Sun at 12 o'clock)
+  paths: 1,         // 0 = rings, 1 = epicycle paths, 2 = off
   speed:      72,   // slider 0–100; 50 = paused
-  zoom:       0,    // 0 = Neptune fits view, 1 = Earth orbit fills view
+  zoom:       0.36, // 0 = Neptune fits view, 1 = Earth orbit fills view
   lastTs:     null,
 };
 
@@ -644,21 +652,34 @@ function setZoom(z) {
   updateZoomUI();
 }
 
-function updateZoomUI() {
-  // Label showing which planet's orbit roughly fills the view
-  const breakpoints = [
-    [0.12, 'Neptune'],
-    [0.28, 'Uranus'],
-    [0.46, 'Saturn'],
-    [0.62, 'Jupiter'],
-    [0.82, 'Mars'],
-    [1.01, 'Earth orbit'],
-  ];
-  let label = 'Neptune';
-  for (const [thresh, name] of breakpoints) {
-    if (state.zoom <= thresh) { label = name; break; }
+// One zoom stop per planet visible at the outermost position in view.
+// z values computed from the log-scale formula so each stop lands exactly when
+// that planet's orbit just fills the canvas (matching scaleRange's 1.15 margin for Neptune).
+const ZOOM_STOPS = [
+  { z: 0.00, label: 'Neptune'     },
+  { z: 0.17, label: 'Uranus'      },
+  { z: 0.36, label: 'Saturn'      },
+  { z: 0.54, label: 'Jupiter'     },
+  { z: 0.88, label: 'Mars'        },
+  { z: 1.00, label: 'Earth orbit' },
+];
+
+function nearestStopIdx() {
+  let best = 0, bestDist = Infinity;
+  for (let i = 0; i < ZOOM_STOPS.length; i++) {
+    const d = Math.abs(state.zoom - ZOOM_STOPS[i].z);
+    if (d < bestDist) { bestDist = d; best = i; }
   }
-  document.getElementById('zoom-val').textContent = label;
+  return best;
+}
+
+function updateZoomUI() {
+  document.getElementById('zoom-val').textContent = ZOOM_STOPS[nearestStopIdx()].label;
+}
+
+function zoomStep(dir) {
+  const next = clamp(nearestStopIdx() + dir, 0, ZOOM_STOPS.length - 1);
+  setZoom(ZOOM_STOPS[next].z);
 }
 
 // View toggle — cycles 0 → 1 → 2 → 0
@@ -706,14 +727,39 @@ zmSlider.addEventListener('input', () => {
   updateZoomUI();
 });
 
-document.getElementById('btn-zout').addEventListener('click', () => setZoom(state.zoom - 0.08));
-document.getElementById('btn-zin' ).addEventListener('click', () => setZoom(state.zoom + 0.08));
+document.getElementById('btn-zout').addEventListener('click', () => zoomStep(-1));
+document.getElementById('btn-zin' ).addEventListener('click', () => zoomStep(+1));
 
 // Scroll-wheel zoom on canvas
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
   setZoom(state.zoom + (e.deltaY < 0 ? 0.06 : -0.06));
 }, { passive: false });
+
+// Pinch-to-zoom on canvas (mobile) — intercepts two-finger gesture before browser sees it
+let pinchDist = null;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) {
+    pinchDist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    e.preventDefault();
+  }
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  if (e.touches.length === 2 && pinchDist !== null) {
+    const dist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    // log ratio gives natural feel: spreading fingers doubles scale → +~0.35 zoom
+    setZoom(state.zoom + Math.log(dist / pinchDist) * 0.5);
+    pinchDist = dist;
+    e.preventDefault();
+  }
+}, { passive: false });
+canvas.addEventListener('touchend', () => { pinchDist = null; }, { passive: false });
 
 window.addEventListener('resize', resize);
 
