@@ -236,6 +236,30 @@ const MOON = { name: 'Moon', sma_display: 0.05, period: 27.3217, L0: 218.316, px
 MOON.n  = TAU / MOON.period;
 MOON.a0 = MOON.L0 * DEG;
 
+// ── Star field ────────────────────────────────────────────────────────────────
+// Stars are stored as (angle, r) in the ecliptic-inertial frame.
+// angle = ecliptic longitude of the star (radians); r = fractional distance
+// from canvas centre (0–1, where 1 = half-diagonal so corners are covered).
+// They are stationary in heliocentric and geocentric views (inertial frames)
+// and rotate once per year in sun-fixed view (rotating frame).
+const STARS = (() => {
+  const out = [];
+  let s = 0x4e6f7274; // fixed seed → same star field every load
+  const rng = () => {
+    s ^= s << 13; s ^= s >>> 17; s ^= s << 5;
+    return (s >>> 0) / 0x100000000;
+  };
+  for (let i = 0; i < 320; i++) {
+    out.push({
+      angle:   rng() * TAU,
+      r:       Math.sqrt(rng()),          // uniform density in polar area
+      size:    0.4 + rng() * rng() * 1.6, // skewed toward tiny
+      opacity: 0.04 + rng() * rng() * 0.20,
+    });
+  }
+  return out;
+})();
+
 // ── State ────────────────────────────────────────────────────────────────────
 const state = {
   simTime:    (Date.now() - J2000_MS) / 86400000, // days since J2000
@@ -346,6 +370,40 @@ function speedLabel(dps) {
 }
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
+function drawStars(mode, t) {
+  // Stars sit in the inertial frame.  In sun-fixed mode we apply the same
+  // rotation matrix used for planets so the star field rotates once per year.
+  const R = Math.hypot(W, H) / 2; // half-diagonal → stars reach canvas corners
+
+  let cosT = 1, sinT = 0;
+  if (mode === 2) {
+    const ep  = PLANETS[EARTH_IDX];
+    const ea  = ep.a0 + ep.n * t;
+    const theta = Math.PI / 2 - Math.atan2(-(ep.sma * Math.sin(ea)),
+                                            -(ep.sma * Math.cos(ea)));
+    cosT = Math.cos(theta); sinT = Math.sin(theta);
+  }
+
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  for (const st of STARS) {
+    // Inertial screen offsets (centre-relative, canvas-y-down)
+    const ox =  R * st.r * Math.cos(st.angle);
+    const oy = -R * st.r * Math.sin(st.angle); // flip: +world-y = up
+
+    // Apply rotation (identity in helio/geo; sun-fixed rotation in mode 2)
+    const sx = cx + ox * cosT + oy * sinT;
+    const sy = cy - ox * sinT + oy * cosT;
+
+    ctx.globalAlpha = st.opacity;
+    ctx.beginPath();
+    ctx.arc(sx, sy, st.size, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 function drawSun(sunPos, sc) {
   const { sx, sy } = tc(sunPos.x, sunPos.y, sc);
 
@@ -684,6 +742,7 @@ function drawEarthCenter() {
 // ── Main render ───────────────────────────────────────────────────────────────
 function render() {
   ctx.clearRect(0, 0, W, H);
+  drawStars(state.view, state.simTime);
 
   const sc                  = getScale();
   const { sun, pp, moon }   = getPositions(state.simTime, state.view);
