@@ -58,7 +58,9 @@ body {
   font-size: 12px;
   flex-shrink: 0;
   min-width: 96px;
+  cursor: pointer;
 }
+#date-display:hover { color: #88aacc; }
 
 .sep {
   width: 1px;
@@ -732,6 +734,11 @@ zmSlider.addEventListener('input', () => {
 
 document.getElementById('btn-zout').addEventListener('click', () => zoomStep(-1));
 document.getElementById('btn-zin' ).addEventListener('click', () => zoomStep(+1));
+
+// Tap date to jump back to today
+document.getElementById('date-display').addEventListener('click', () => {
+  state.simTime = (Date.now() - J2000_MS) / 86400000;
+});
 
 // Scroll-wheel zoom on canvas
 canvas.addEventListener('wheel', e => {
