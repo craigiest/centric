@@ -881,15 +881,46 @@ function zoomStep(dir) {
 // Sequence: Geo+Paths → Geo+Epicycles → SunFixed+Epicycles →
 //           SunFixed+Off → SunFixed+Rings → Helio+Rings (done)
 function updateHint() {
+  const vt      = document.getElementById('view-toggle');
+  const btnPath = document.getElementById('btn-paths');
+  const btnExp  = document.getElementById('btn-explain');
+
+  // When explanations are off, kill all pulses immediately
+  if (!state.explain) {
+    vt.className = VIEW_CLASSES[state.view];
+    btnPath.classList.remove('hint');
+    btnExp.classList.remove('hint');
+    return;
+  }
+
   const v = state.view, p = state.paths;
   const hintView    = (v === 1 && p === 3) || (v === 2 && p === 0);
   const hintPaths   = (v === 1 && p === 1) || (v === 2 && p === 3) || (v === 2 && p === 2);
   const hintExplain = (v === 0 && p === 0);
-  // View toggle className is managed externally (replaces all classes), so set it here too
-  const vt = document.getElementById('view-toggle');
-  vt.className = (VIEW_CLASSES[state.view] + (hintView ? ' hint' : '')).trim();
-  document.getElementById('btn-paths').classList.toggle('hint', hintPaths);
-  document.getElementById('btn-explain').classList.toggle('hint', hintExplain);
+
+  // Helper: remove, optionally force reflow to restart animation, then re-add.
+  // The reflow is needed when a button keeps .hint across two consecutive steps
+  // (e.g. btn-paths at steps 3 & 4) so the 4s animation-delay resets properly.
+  const setHint = (el, on) => {
+    const had = el.classList.contains('hint');
+    el.classList.remove('hint');
+    if (on) {
+      if (had) void el.offsetWidth; // restart animation delay
+      el.classList.add('hint');
+    }
+  };
+
+  // View toggle uses className wholesale, so handle separately
+  const baseClass = VIEW_CLASSES[state.view];
+  const hadHintV  = vt.classList.contains('hint');
+  vt.className = baseClass;
+  if (hintView) {
+    if (hadHintV) void vt.offsetWidth;
+    vt.className = (baseClass + ' hint').trim();
+  }
+
+  setHint(btnPath, hintPaths);
+  setHint(btnExp,  hintExplain);
 }
 
 // View toggle — cycles 0 → 1 → 2 → 0
@@ -939,6 +970,7 @@ document.getElementById('btn-explain').addEventListener('click', function () {
   state.explain = !state.explain;
   this.classList.toggle('active', state.explain);
   updateBlurb();
+  updateHint(); // stop all pulses when explanations are turned off
 });
 
 // Speed slider
