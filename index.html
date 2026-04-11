@@ -457,12 +457,13 @@ function drawPaths(mode, t, sc) {
 
     const p = PLANETS[pi];
 
-    // Window = exactly one synodic period total (half back, half forward).
-    // After one synodic period the Earth–planet geometry nearly repeats, so the
-    // path endpoints almost meet.  ~1 sample/day keeps curves smooth.
+    // Window: full sidereal orbit for each planet; minimum 1 Earth year for
+    // fast inner planets so Mercury isn't too short and Venus doesn't loop.
+    // nLoops scales sample count so curves stay smooth regardless of orbit size.
     const synodic = 1 / Math.abs(1 / p.period - 1 / 365.25);
-    const halfPer = synodic / 2;
-    const N       = Math.min(2000, Math.max(180, Math.ceil(synodic)));
+    const halfPer = Math.max(p.period / 2, 365.25 / 2);
+    const nLoops  = Math.max(0.5, halfPer / synodic);
+    const N       = Math.min(4000, Math.max(360, Math.ceil(nLoops * 60)));
     const dtStep  = (2 * halfPer) / N;
 
     // Sample position in the display frame at time ti
