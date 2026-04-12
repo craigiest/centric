@@ -662,7 +662,7 @@ function drawEpicycles(mode, t, sc) {
 
     // Deferent ring — centred on Earth, radius = planet sma
     // Scale dash length with orbit size so large outer-planet rings remain visible
-    const dash = Math.max(4, Math.min(40, p.sma * sc * 0.3));
+    const dash = Math.max(4, Math.min(20, p.sma * sc * 0.1));
     const gap  = Math.max(5, dash * 1.2);
     ctx.lineWidth = 1;
     ctx.setLineDash([dash, gap]);
