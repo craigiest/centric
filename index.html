@@ -639,28 +639,41 @@ function drawEpicycles(mode, t, sc) {
   }
   const rot = v => ({ x: v.x * cosT - v.y * sinT, y: v.x * sinT + v.y * cosT });
 
+  // In heliocentric mode the whole construction shifts to Earth's actual position,
+  // matching the same offset drawPaths uses (geo + earthNow) so the planet lands
+  // on its correct heliocentric location.
+  const centerH = (mode === 0) ? earthH : { x: 0, y: 0 };
+
   for (let pi = 0; pi < PLANETS.length; pi++) {
     if (pi === EARTH_IDX) continue;
 
-    const p   = PLANETS[pi];
-    const pH  = helioPos(p, t);                                      // planet heliocentric
-    const def = rot(pH);                                             // deferent tip (in display frame)
-    const geo = rot({ x: pH.x - earthH.x, y: pH.y - earthH.y });   // planet geocentric
+    const p      = PLANETS[pi];
+    const pH     = helioPos(p, t);                                         // planet heliocentric
+    const defRaw = rot(pH);                                                // deferent arm (geocentric frame)
+    const geoRaw = rot({ x: pH.x - earthH.x, y: pH.y - earthH.y });      // planet geocentric
+    // Shift by centerH so that in heliocentric mode Earth sits at earthH and
+    // the planet lands on its true heliocentric position.
+    const def = { x: centerH.x + defRaw.x, y: centerH.y + defRaw.y };
+    const geo = { x: centerH.x + geoRaw.x, y: centerH.y + geoRaw.y };
 
-    const { sx: ex, sy: ey } = tc(0,       0,       sc);  // Earth
+    const { sx: ex, sy: ey } = tc(centerH.x, centerH.y, sc);  // Earth
     const { sx: dx, sy: dy } = tc(def.x,   def.y,   sc);  // deferent tip
     const { sx: gx, sy: gy } = tc(geo.x,   geo.y,   sc);  // planet
 
     // Deferent ring — centred on Earth, radius = planet sma
+    // Scale dash length with orbit size so large outer-planet rings remain visible
+    const dash = Math.max(4, Math.min(40, p.sma * sc * 0.3));
+    const gap  = Math.max(5, dash * 1.2);
     ctx.lineWidth = 1;
-    ctx.setLineDash([4, 5]);
-    ctx.strokeStyle = colorRgba(p.color, 0.20);
+    ctx.setLineDash([dash, gap]);
+    ctx.strokeStyle = colorRgba(p.color, 0.45);
     ctx.beginPath();
     ctx.arc(ex, ey, p.sma * sc, 0, TAU);
     ctx.stroke();
 
     // Epicycle ring — centred on deferent tip, radius = 1 AU
-    ctx.strokeStyle = colorRgba(p.color, 0.35);
+    ctx.setLineDash([4, 5]);
+    ctx.strokeStyle = colorRgba(p.color, 0.55);
     ctx.beginPath();
     ctx.arc(dx, dy, 1.0 * sc, 0, TAU);
     ctx.stroke();
@@ -797,12 +810,8 @@ function render() {
     drawOrbitRings(sun, sc);
     if (state.view !== 0) drawMoonOrbitRing(earthCenter, sc);
   } else if (state.paths === 3) {
-    if (state.view === 0) {
-      drawOrbitRings(sun, sc); // heliocentric: fall back to orbit rings
-    } else {
-      drawEpicycles(state.view, state.simTime, sc);
-      drawMoonOrbitRing(earthCenter, sc);
-    }
+    drawEpicycles(state.view, state.simTime, sc);
+    if (state.view !== 0) drawMoonOrbitRing(earthCenter, sc);
   }
   // state.paths === 2: off — draw nothing
   drawSun(sun, sc);
