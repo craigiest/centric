@@ -652,15 +652,19 @@ function drawEpicycles(mode, t, sc) {
     const { sx: gx, sy: gy } = tc(geo.x,   geo.y,   sc);  // planet
 
     // Deferent ring — centred on Earth, radius = planet sma
+    // Scale dash length with orbit size so large outer-planet rings remain visible
+    const dash = Math.max(4, Math.min(40, p.sma * sc * 0.3));
+    const gap  = Math.max(5, dash * 1.2);
     ctx.lineWidth = 1;
-    ctx.setLineDash([4, 5]);
-    ctx.strokeStyle = colorRgba(p.color, 0.20);
+    ctx.setLineDash([dash, gap]);
+    ctx.strokeStyle = colorRgba(p.color, 0.45);
     ctx.beginPath();
     ctx.arc(ex, ey, p.sma * sc, 0, TAU);
     ctx.stroke();
 
     // Epicycle ring — centred on deferent tip, radius = 1 AU
-    ctx.strokeStyle = colorRgba(p.color, 0.35);
+    ctx.setLineDash([4, 5]);
+    ctx.strokeStyle = colorRgba(p.color, 0.55);
     ctx.beginPath();
     ctx.arc(dx, dy, 1.0 * sc, 0, TAU);
     ctx.stroke();
@@ -797,12 +801,11 @@ function render() {
     drawOrbitRings(sun, sc);
     if (state.view !== 0) drawMoonOrbitRing(earthCenter, sc);
   } else if (state.paths === 3) {
-    if (state.view === 0) {
-      drawOrbitRings(sun, sc); // heliocentric: fall back to orbit rings
-    } else {
+    if (state.view !== 0) {
       drawEpicycles(state.view, state.simTime, sc);
       drawMoonOrbitRing(earthCenter, sc);
     }
+    // heliocentric: epicycles don't apply — draw nothing
   }
   // state.paths === 2: off — draw nothing
   drawSun(sun, sc);
